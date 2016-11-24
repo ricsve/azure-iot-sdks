@@ -187,26 +187,27 @@ namespace Microsoft.Azure.Devices.Client.Transport.Mqtt
 
         public static async Task<PublishPacket> ComposePublishPacketAsync(IChannelHandlerContext context, Message message, QualityOfService qos, string topicName)
         {
-            var packet = new PublishPacket(qos, false, false);
-            packet.TopicName = PopulateMessagePropertiesFromMessage(topicName, message);
-            if (qos > QualityOfService.AtMostOnce)
+            using (message)
             {
-                int packetId = GetNextPacketId();
-                switch (qos)
+                var packet = new PublishPacket(qos, false, false);
+                packet.TopicName = PopulateMessagePropertiesFromMessage(topicName, message);
+                if (qos > QualityOfService.AtMostOnce)
                 {
-                    case QualityOfService.AtLeastOnce:
-                        packetId &= 0x7FFF; // clear 15th bit
-                        break;
-                    case QualityOfService.ExactlyOnce:
-                        packetId |= 0x8000; // set 15th bit
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(qos), qos, null);
+                    int packetId = GetNextPacketId();
+                    switch (qos)
+                    {
+                        case QualityOfService.AtLeastOnce:
+                            packetId &= 0x7FFF; // clear 15th bit
+                            break;
+                        case QualityOfService.ExactlyOnce:
+                            packetId |= 0x8000; // set 15th bit
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(qos), qos, null);
+                    }
+                    packet.PacketId = packetId;
                 }
-                packet.PacketId = packetId;
-            }
-            using (Stream payloadStream = message.GetBodyStream())
-            {
+                Stream payloadStream = message.GetBodyStream();
                 long streamLength = payloadStream.Length;
                 if (streamLength > MaxPayloadSize)
                 {
@@ -219,8 +220,8 @@ namespace Microsoft.Azure.Devices.Client.Transport.Mqtt
                 Contract.Assert(buffer.ReadableBytes == length);
 
                 packet.Payload = buffer;
+                return packet;
             }
-            return packet;
         }
 
         public static async Task WriteMessageAsync(IChannelHandlerContext context, object message, Func<IChannelHandlerContext, Exception, bool> exceptionHandler)
